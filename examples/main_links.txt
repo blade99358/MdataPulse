@@ -1,0 +1,4 @@
+# Copy to data/main_links.txt. One site per line: SITE <- UPSTREAM: radio(s) at UPSTREAM ~ radio(s) at SITE.
+# Two radios joined by + are one LACP link (the site is down only when both are down).
+SITE0001 <- SITE0000: SITE0000-BH-01 ~ SITE0001-BH-01
+SITE0002 <- SITE0001: SITE0001-WAVE-3+SITE0001-WAVE-4 ~ SITE0002-WAVE-5+SITE0002-WAVE-6

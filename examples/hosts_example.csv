@@ -1,0 +1,8 @@
+host,name,ip,site,role,vendor,model,parent,poe,uplink_ports,snmp_community
+SITE0000-AGG-01,SITE0000 Pro Aggregation,10.20.0.1,SITE0000,aggregation,unifi,Pro Aggregation,,,sfp28-1,
+SITE0000-BH-01,SITE0000 Backhaul Wave Pro,10.20.0.2,SITE0000,backhaul,ubiquiti,Wave Pro,SITE0000-AGG-01,,,
+SITE0001-BH-01,SITE0001 Backhaul Wave Pro,10.20.0.3,SITE0001,backhaul,ubiquiti,Wave Pro,SITE0000-BH-01,,,
+SITE0001-SW-01,SITE0001 Access switch,10.20.0.4,SITE0001,access-switch,ekit,S310,SITE0001-BH-01,yes,port1,
+SITE0001-AP-01,SITE0001 AP 4600,10.20.0.5,SITE0001,ap,cambium,ePMP 4600,SITE0001-SW-01,,,
+EP-E0001-CPE,Endpoint 1 CPE,10.20.1.1,SITE0001,sm,cambium,Force 4600C,SITE0001-AP-01,,,
+SITE0001-UPS,SITE0001 UPS,10.20.10.1,SITE0001,ups,huawei,UPS2000,SITE0001-SW-01,,,

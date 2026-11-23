@@ -1,0 +1,2634 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 36fa9b24fc214820946d9e1329823346
+    name: Templates/MDP network
+  - uuid: 3a6df9131b5b4091b794130bc1f598b6
+    name: Templates/MDP server
+  templates:
+  - uuid: 6405b5e0c6ce403b9369f0415dd7f309
+    template: MDP Network Base SNMP
+    name: MDP Network Base SNMP
+    description: 'Common base for all MDP network devices: ping, uptime (for RCA), interfaces.'
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: 1e4baf46ea7e4907ae7b5fc412505453
+      name: ICMP ping
+      type: SIMPLE
+      key: icmpping
+      delay: '{$ICMP.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      valuemap:
+        name: Service state
+      tags:
+      - tag: component
+        value: health
+      - tag: rca
+        value: ping
+      triggers:
+      - uuid: 4e2295b22d7b4d43a5c392c963ffc1d0
+        expression: max(/MDP Network Base SNMP/icmpping,{$ICMP.DOWN.TIME})=0
+        name: Device unreachable
+        priority: AVERAGE
+        description: No ICMP reply. Downstream devices depend on this trigger through the parent tag, so only the highest failed device raises a problem.
+        tags:
+        - tag: scope
+          value: availability
+        - tag: alarm
+          value: unreachable
+    - uuid: 94d1d506f3e54fcbb4209b264c15677e
+      name: ICMP loss
+      type: SIMPLE
+      key: icmppingloss
+      delay: '{$ICMP.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: health
+      - tag: rca
+        value: loss
+      triggers:
+      - uuid: 2489912595b04fe9add502ea7f1220cf
+        expression: min(/MDP Network Base SNMP/icmppingloss,5m)>{$ICMP.LOSS.WARN} and min(/MDP Network Base SNMP/icmppingloss,5m)<100
+        name: High ICMP packet loss
+        priority: WARNING
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 95df891e1ad84198bfa4de103adcfe53
+      name: ICMP response time
+      type: SIMPLE
+      key: icmppingsec
+      delay: '{$ICMP.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: s
+      tags:
+      - tag: component
+        value: health
+      - tag: rca
+        value: latency
+    - uuid: cf6994bf882e4064acef9abad14585ce
+      name: Hardware uptime
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.25.1.1.0]
+      key: system.hw.uptime
+      delay: '{$UPTIME.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      units: uptime
+      description: hrSystemUptime. Used by the RCA script to compute boot time. Devices without it (UniFi) store 0, and the triggers and the RCA script use sysUpTime instead.
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      - type: MULTIPLIER
+        parameters:
+        - '0.01'
+      tags:
+      - tag: component
+        value: system
+      - tag: rca
+        value: uptime
+    - uuid: cb993111be7e4134b7f4effb78cc97eb
+      name: SNMP agent uptime
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.1.3.0]
+      key: system.net.uptime
+      delay: '{$UPTIME.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      units: uptime
+      description: sysUpTime. Resets on agent restart as well as on reboot.
+      preprocessing:
+      - type: MULTIPLIER
+        parameters:
+        - '0.01'
+      tags:
+      - tag: component
+        value: system
+      - tag: rca
+        value: uptime
+    - uuid: a11f9f0d77534c6d88ada8dd92e324e3
+      name: System name
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.1.5.0]
+      key: system.name
+      delay: 1h
+      history: 7d
+      trends: '0'
+      value_type: CHAR
+      inventory_link: NAME
+      tags:
+      - tag: component
+        value: system
+    - uuid: 117fc7f7c5f042199f0731edce36c52f
+      name: System description
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.1.1.0]
+      key: system.descr
+      delay: 1h
+      history: 7d
+      trends: '0'
+      value_type: CHAR
+      inventory_link: OS
+      tags:
+      - tag: component
+        value: system
+    - uuid: ee45189dd39f429a91cfac7263b227aa
+      name: SNMP agent availability
+      type: INTERNAL
+      key: zabbix[host,snmp,available]
+      history: '{$RCA.HISTORY}'
+      valuemap:
+        name: zabbix.host.available
+      tags:
+      - tag: component
+        value: health
+      - tag: rca
+        value: snmp
+    discovery_rules:
+    - uuid: b08f436b09e04f83a6c13b4c80e74203
+      name: Network interfaces discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#IFOPERSTATUS},1.3.6.1.2.1.2.2.1.8,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,{#IFALIAS},1.3.6.1.2.1.31.1.1.1.18,{#IFNAME},1.3.6.1.2.1.31.1.1.1.1,{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFTYPE},1.3.6.1.2.1.2.2.1.3]
+      key: net.if.discovery
+      delay: 1h
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#IFTYPE}'
+          value: '{$NET.IF.IFTYPE.MATCHES}'
+          formulaid: A
+        - macro: '{#IFADMINSTATUS}'
+          value: ^1$
+          formulaid: B
+      item_prototypes:
+      - uuid: 3b45797a291445618a9fca9decc2aa74
+        name: 'Interface {#IFNAME}({#IFALIAS}): Operational status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.2.2.1.8.{#SNMPINDEX}]
+        key: net.if.status[ifOperStatus.{#SNMPINDEX}]
+        delay: '{$IF.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        trends: '0'
+        valuemap:
+          name: IF-MIB::ifOperStatus
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        - tag: rca
+          value: ifstatus
+        trigger_prototypes:
+        - uuid: c6f3f87760274681be95165a32824d69
+          expression: '{$IF.LINKDOWN.ALERT:"{#IFNAME}"}=1 and last(/MDP Network Base SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])=2 and (last(/MDP Network Base SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#1)<>last(/MDP
+            Network Base SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}],#2))=1'
+          recovery_mode: RECOVERY_EXPRESSION
+          recovery_expression: last(/MDP Network Base SNMP/net.if.status[ifOperStatus.{#SNMPINDEX}])<>2
+          name: 'Interface {#IFNAME}({#IFALIAS}): Link down'
+          priority: AVERAGE
+          manual_close: 'YES'
+          description: Alerts only on ports with {$IF.LINKDOWN.ALERT:"<ifname>"}=1 (set it on uplinks), to avoid noise from access ports.
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: b8e0f1092c7b42f0ab18c401c3427991
+        name: 'Interface {#IFNAME}({#IFALIAS}): Last change'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.2.2.1.9.{#SNMPINDEX}]
+        key: net.if.lastchange[ifLastChange.{#SNMPINDEX}]
+        delay: '{$IF.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        trends: '0'
+        units: uptime
+        description: sysUpTime at the last status change of this port. A change without an uptime reset = link flap.
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '0.01'
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        - tag: rca
+          value: iflastchange
+      - uuid: 96ef05e3d35441709ac18546b8b6d2a1
+        name: 'Interface {#IFNAME}({#IFALIAS}): Speed'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.31.1.1.1.15.{#SNMPINDEX}]
+        key: net.if.speed[ifHighSpeed.{#SNMPINDEX}]
+        delay: 5m
+        history: '{$RCA.HISTORY}'
+        trends: '0'
+        units: bps
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '1000000'
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 1h
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+      - uuid: 4133ca623292494cbc7b5857dfe90586
+        name: 'Interface {#IFNAME}({#IFALIAS}): Bits received'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.31.1.1.1.6.{#SNMPINDEX}]
+        key: net.if.in[ifHCInOctets.{#SNMPINDEX}]
+        delay: '{$IF.TRAFFIC.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        units: bps
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+          parameters:
+          - ''
+        - type: MULTIPLIER
+          parameters:
+          - '8'
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        - tag: rca
+          value: traffic
+      - uuid: 32a9f5e839e342afb7853983b6c4a49f
+        name: 'Interface {#IFNAME}({#IFALIAS}): Bits sent'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.31.1.1.1.10.{#SNMPINDEX}]
+        key: net.if.out[ifHCOutOctets.{#SNMPINDEX}]
+        delay: '{$IF.TRAFFIC.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        units: bps
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+          parameters:
+          - ''
+        - type: MULTIPLIER
+          parameters:
+          - '8'
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        - tag: rca
+          value: traffic
+      - uuid: 7b3bfcd4691a42639a069baa3404c449
+        name: 'Interface {#IFNAME}({#IFALIAS}): Inbound errors'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.2.2.1.14.{#SNMPINDEX}]
+        key: net.if.in.errors[ifInErrors.{#SNMPINDEX}]
+        delay: '{$IF.TRAFFIC.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        preprocessing:
+        - type: CHANGE_PER_SECOND
+          parameters:
+          - ''
+        tags:
+        - tag: component
+          value: network
+        - tag: interface
+          value: '{#IFNAME}'
+        - tag: rca
+          value: errors
+    macros:
+    - macro: '{$ICMP.INTERVAL}'
+      value: 1m
+    - macro: '{$ICMP.DOWN.TIME}'
+      value: 3m
+      description: No ping reply for this long = unreachable
+    - macro: '{$ICMP.LOSS.WARN}'
+      value: '20'
+    - macro: '{$CPE.UPTIME.ALERT}'
+      value: '0'
+      description: 1 = 'CPE uptime below' alarm (set on EP-* hosts)
+    - macro: '{$CPE.UPTIME.MIN}'
+      value: 7d
+      description: CPE uptime below this = alarm
+    - macro: '{$UPTIME.INTERVAL}'
+      value: 1m
+      description: 'Keep at 1m: RCA boot-time accuracy depends on it'
+    - macro: '{$IF.INTERVAL}'
+      value: 1m
+      description: Port status and last change (RCA link flaps)
+    - macro: '{$IF.TRAFFIC.INTERVAL}'
+      value: 5m
+      description: Port traffic and errors (not used by the RCA). 1m = 5x more data
+    - macro: '{$RCA.HISTORY}'
+      value: 30d
+      description: History kept for RCA lookbacks (the global housekeeping override from zbx_data.py policy sets the real period; older readings come from the archive)
+    - macro: '{$SNMP.TIMEOUT}'
+      value: 5m
+    - macro: '{$SNMP.ALERT}'
+      value: '1'
+      description: 0 = no 'SNMP not responding' alarm (ping-only devices)
+    - macro: '{$NET.IF.IFTYPE.MATCHES}'
+      value: ^(6|71|117|161)$
+    - macro: '{$IF.LINKDOWN.ALERT}'
+      value: '0'
+      description: Set {$IF.LINKDOWN.ALERT:"<ifname>"}=1 on uplink ports
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: mdp
+    valuemaps:
+    - uuid: 625306d4d67046eea3775a4211170f9f
+      name: Service state
+      mappings:
+      - value: '0'
+        newvalue: Down
+      - value: '1'
+        newvalue: Up
+    - uuid: e3c2e941bda04523969c5038ffd8a083
+      name: zabbix.host.available
+      mappings:
+      - value: '0'
+        newvalue: not available
+      - value: '1'
+        newvalue: available
+      - value: '2'
+        newvalue: unknown
+    - uuid: d1c56218770349b0bd7989348687939e
+      name: IF-MIB::ifOperStatus
+      mappings:
+      - value: '1'
+        newvalue: up
+      - value: '2'
+        newvalue: down
+      - value: '3'
+        newvalue: testing
+      - value: '4'
+        newvalue: unknown
+      - value: '5'
+        newvalue: dormant
+      - value: '6'
+        newvalue: notPresent
+      - value: '7'
+        newvalue: lowerLayerDown
+  - uuid: c74f4ef1623141db8c15f86871b5c2d7
+    template: MDP Cambium ePMP SNMP
+    name: MDP Cambium ePMP SNMP
+    description: Cambium ePMP 4600 / Force 4600C / Force 4625 wireless metrics (CAMBIUM-PMP80211-MIB). Link together with MDP Network Base SNMP.
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: 769111b9f7c44e4bae373c5cf4c184b6
+      name: 'Wireless: Mode'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.3.8.2.1.0]
+      key: wifi.mode
+      delay: 10m
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: wireless
+      valuemap:
+        name: ePMP mode
+    - uuid: f2ae4b77006f439e80a72f072084af8b
+      name: 'Wireless: Frequency'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.3.8.2.18.0]
+      key: wifi.frequency
+      delay: 10m
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      units: MHz
+      tags:
+      - tag: component
+        value: wireless
+    - uuid: c516ff050f0145208de8855e4166d89a
+      name: 'Wireless: Connected stations (AP)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.10.0]
+      key: wifi.stations
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: stations
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    - uuid: f108879bd16b4cde93fd1cc3e60cbd41
+      name: 'Wireless: Link state (SM)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.16.0]
+      key: wifi.link.state
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: linkstate
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+      valuemap:
+        name: ePMP link state
+    - uuid: 43f6f0f35d6343f4aae4f0e6db0d7a84
+      name: 'Wireless: Connected AP (SM)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.8.0]
+      key: wifi.link.ssid
+      delay: 10m
+      history: '{$RCA.HISTORY}'
+      value_type: CHAR
+      tags:
+      - tag: component
+        value: wireless
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    - uuid: 1eca8a74832b40e7b9f0e6de4f6ec495
+      name: 'Wireless: Signal (dBm)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.3.0]
+      key: wifi.rssi
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: dBm
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: rssi
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    - uuid: 3234675aee104e13b08644c6aa048764
+      name: 'Wireless: SNR (dB)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.18.0]
+      key: wifi.snr
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: dB
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: snr
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    - uuid: c78d6e7539ba4470869b7fc16e811d60
+      name: 'Wireless: Weakest station signal (dBm)'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.4.1.17713.21.1.2.30.1.4]
+      key: wifi.sta.worst
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: dBm
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+      - type: JAVASCRIPT
+        parameters:
+        - |-
+          var re = /=\s*[A-Za-z0-9]+:\s*(-?[0-9.]+)/g, m, best = null;
+          while ((m = re.exec(value)) !== null) { var v = parseFloat(m[1]); if (best === null || v < best) best = v; }
+          if (best === null) throw 'no stations';
+          return best;
+        error_handler: DISCARD_VALUE
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: rssi
+    - uuid: bba05f56237e403b8657ee34dbba752e
+      name: 'Wireless: DL MCS (SM)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.7.0]
+      key: wifi.dlmcs
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: wireless
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    - uuid: 336870924e194769b754c256a4660364
+      name: 'Wireless: UL MCS (SM)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.6.0]
+      key: wifi.ulmcs
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: wireless
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    - uuid: bc98fc33140c431d9a1e56249dcb2a1b
+      name: 'Wireless: Distance to AP (SM)'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.12.0]
+      key: wifi.distance
+      delay: 1h
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: km
+      tags:
+      - tag: component
+        value: wireless
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+    discovery_rules:
+    - uuid: 5a4bdfcea020492fbb92f5127ecd635c
+      name: Connected stations discovery (AP)
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#STAMAC},1.3.6.1.4.1.17713.21.1.2.30.1.1,{#STAIP},1.3.6.1.4.1.17713.21.1.2.30.1.10]
+      key: epmp.sta.discovery
+      delay: 10m
+      lifetime: 3d
+      item_prototypes:
+      - uuid: c7fd9d34484441db8092a73ac6775869
+        name: 'Station {#STAIP} ({#STAMAC}): DL RSSI'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.30.1.5.{#SNMPINDEX}]
+        key: wifi.sta.dlrssi[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dBm
+        tags:
+        - tag: component
+          value: wireless
+      - uuid: 6dbc517b226b47a88da604d2368bb457
+        name: 'Station {#STAIP} ({#STAMAC}): UL RSSI'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.30.1.4.{#SNMPINDEX}]
+        key: wifi.sta.ulrssi[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dBm
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: rssi
+      - uuid: 3f350a8e0da446ba99d068a315574968
+        name: 'Station {#STAIP} ({#STAMAC}): DL SNR'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.30.1.7.{#SNMPINDEX}]
+        key: wifi.sta.dlsnr[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dB
+        tags:
+        - tag: component
+          value: wireless
+      - uuid: dfad8c0fe5cd423fb48012b734447f52
+        name: 'Station {#STAIP} ({#STAMAC}): UL SNR'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.30.1.6.{#SNMPINDEX}]
+        key: wifi.sta.ulsnr[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dB
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: snr
+      - uuid: bc9e320213fd40f5a6bc788752172ce7
+        name: 'Station {#STAIP} ({#STAMAC}): DL MCS'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.30.1.9.{#SNMPINDEX}]
+        key: wifi.sta.dlmcs[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        tags:
+        - tag: component
+          value: wireless
+      - uuid: 5a96a30ba5194a65ae6c248f92578074
+        name: 'Station {#STAIP} ({#STAMAC}): UL MCS'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.17713.21.1.2.30.1.8.{#SNMPINDEX}]
+        key: wifi.sta.ulmcs[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        tags:
+        - tag: component
+          value: wireless
+    macros:
+    - macro: '{$WIFI.INTERVAL}'
+      value: 1m
+    - macro: '{$WIFI.RSSI.MIN}'
+      value: '-75'
+    - macro: '{$WIFI.SNR.MIN}'
+      value: '15'
+    - macro: '{$WIFI.LINK.DOWN}'
+      value: 3m
+    valuemaps:
+    - uuid: 355332cdf56441488171ded05c9ad1f4
+      name: ePMP mode
+      mappings:
+      - value: '1'
+        newvalue: AP
+      - value: '2'
+        newvalue: SM
+      - value: '3'
+        newvalue: Spectrum analyzer
+    - uuid: b66364aeafbd4f1893ea434a5851050f
+      name: ePMP link state
+      mappings:
+      - value: '1'
+        newvalue: scanning
+      - value: '2'
+        newvalue: connecting
+      - value: '3'
+        newvalue: connected
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: cambium
+  - uuid: f4e7d8fe4d554c8ab3159526f8822b32
+    template: MDP PoE Switch SNMP
+    name: MDP PoE Switch SNMP
+    description: PoE port state (POWER-ETHERNET-MIB). Link together with MDP Network Base SNMP on PoE switches.
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: 69d88761edee4a37b7441186678f28eb
+      name: 'PoE: Total power consumption'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.105.1.3.1.1.4.1]
+      key: poe.power.used
+      value_type: FLOAT
+      preprocessing:
+      - type: MULTIPLIER
+        parameters:
+        - '{$POE.POWER.MULT}'
+      delay: 5m
+      history: '{$RCA.HISTORY}'
+      units: W
+      tags:
+      - tag: component
+        value: poe
+    discovery_rules:
+    - uuid: ad914cb15abc47209699ec8d31e27e8c
+      name: PoE ports discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#POE.ADMIN},1.3.6.1.2.1.105.1.1.1.3]
+      key: poe.port.discovery
+      delay: 1h
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#POE.ADMIN}'
+          value: ^1$
+          formulaid: A
+      item_prototypes:
+      - uuid: ea0dcbb420e148f9acf22cc9f430f2c7
+        name: 'PoE port {#SNMPINDEX}: Detection status'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.2.1.105.1.1.1.6.{#SNMPINDEX}]
+        key: poe.port.status[{#SNMPINDEX}]
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |-
+            var map = '{$POE.STATUS.MAP}'.split(',');
+            for (var i = 0; i < map.length; i++) {
+                var kv = map[i].split(':');
+                if (kv.length == 2 && kv[0].trim() == value.trim()) return kv[1].trim();
+            }
+            return value;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        delay: 1m
+        history: '{$RCA.HISTORY}'
+        trends: '0'
+        valuemap:
+          name: pethPsePortDetectionStatus
+        description: 3 = deliveringPower. A drop from 3 while the switch stays up = PoE/cable fault on that port.
+        tags:
+        - tag: component
+          value: poe
+        - tag: rca
+          value: poe
+        trigger_prototypes:
+        - uuid: a78577419ba54d6cb310fe5b6b1ddf79
+          expression: last(/MDP PoE Switch SNMP/poe.port.status[{#SNMPINDEX}],#2)=3 and last(/MDP PoE Switch SNMP/poe.port.status[{#SNMPINDEX}])<>3
+          recovery_mode: RECOVERY_EXPRESSION
+          recovery_expression: last(/MDP PoE Switch SNMP/poe.port.status[{#SNMPINDEX}])=3
+          name: 'PoE port {#SNMPINDEX}: Stopped delivering power'
+          priority: AVERAGE
+          manual_close: 'YES'
+          tags:
+          - tag: scope
+            value: availability
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: poe
+    macros:
+    - macro: '{$POE.STATUS.MAP}'
+      description: 'Translate non-standard PoE states, from:to pairs. Linksys LGS: 1:2,2:3,3:4,4:1'
+    - macro: '{$POE.POWER.MULT}'
+      value: '1'
+      description: 'Total PoE power multiplier to watts. Linksys LGS reports tenths: 0.1'
+    valuemaps:
+    - uuid: 95c10386db0349ebab23f342b1439437
+      name: pethPsePortDetectionStatus
+      mappings:
+      - value: '1'
+        newvalue: disabled
+      - value: '2'
+        newvalue: searching
+      - value: '3'
+        newvalue: deliveringPower
+      - value: '4'
+        newvalue: fault
+      - value: '5'
+        newvalue: test
+      - value: '6'
+        newvalue: otherFault
+  - uuid: fe060ae5184b497cae4746e22218d110
+    template: MDP UPS SNMP
+    name: MDP UPS SNMP
+    description: Huawei UPS2000G network card (UPS-MIB output source + HUAWEI-UPS-MIB readings). Link together with MDP Network Base SNMP.
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: 40d60ec8a0c743f99a2d807dbe8b0d3e
+      name: 'UPS: Output source'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.33.1.4.1.0]
+      key: ups.output.source
+      delay: 1m
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: power
+      - tag: rca
+        value: ups.source
+      valuemap:
+        name: upsOutputSource
+      trends: '0'
+      triggers:
+      - uuid: f9a79979621f44be90a88a4697ad9248
+        expression: last(/MDP UPS SNMP/ups.output.source)=5
+        name: 'UPS: On battery (mains power lost)'
+        priority: AVERAGE
+        description: The site has lost mains power and is running on battery.
+        tags:
+        - tag: scope
+          value: availability
+      - uuid: 99f7ca4a90004a0f811be400dd5f2037
+        expression: last(/MDP UPS SNMP/ups.output.source)=4
+        name: 'UPS: On bypass'
+        priority: AVERAGE
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 56c1ff0c99b9482dbb85d055e612f200
+      name: 'UPS: Time on battery'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.2.1.33.1.2.2.0]
+      key: ups.battery.onbattery
+      delay: 1m
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      units: s
+      tags:
+      - tag: component
+        value: power
+      - tag: rca
+        value: ups.onbattery
+    - uuid: 9f47e05a9d68491193c14087e21b2eda
+      name: 'UPS: Battery state'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2011.6.174.1.2.101.1.3.1]
+      key: ups.battery.status
+      delay: 1m
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: power
+      valuemap:
+        name: Huawei UPS battery state
+      trends: '0'
+    - uuid: 9779a5d3731a4cd29bb11ff6a362174f
+      name: 'UPS: Battery charge'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2011.6.174.1.6.100.1.3.1]
+      key: ups.battery.charge
+      delay: 1m
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      units: '%'
+      tags:
+      - tag: component
+        value: power
+    - uuid: 2f849273c0064bcda241a4588151c0ab
+      name: 'UPS: Estimated runtime'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2011.6.174.1.6.100.1.4.1]
+      key: ups.battery.minutes
+      delay: 1m
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: m
+      tags:
+      - tag: component
+        value: power
+      preprocessing:
+      - type: MULTIPLIER
+        parameters:
+        - '0.0166667'
+    - uuid: 37895aafbab84833b4ec8023bdfe8f03
+      name: 'UPS: Input voltage'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2011.6.174.1.3.100.1.1.1]
+      key: ups.input.voltage
+      delay: 1m
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: V
+      tags:
+      - tag: component
+        value: power
+      - tag: rca
+        value: ups.vin
+      preprocessing:
+      - type: MULTIPLIER
+        parameters:
+        - '0.1'
+    - uuid: 01ce7b61205940fb8c99f127ad69dc11
+      name: 'UPS: Output load'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.2011.6.174.1.4.100.1.14.1]
+      key: ups.output.load
+      delay: 5m
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: power
+      preprocessing:
+      - type: MULTIPLIER
+        parameters:
+        - '0.1'
+    macros:
+    - macro: '{$UPS.RUNTIME.MIN}'
+      value: '10'
+    - macro: '{$UPS.CHARGE.MIN}'
+      value: '30'
+    tags:
+    - tag: class
+      value: power
+    - tag: target
+      value: ups
+    valuemaps:
+    - uuid: c8db4b608d5c4c91b284055d87f1089a
+      name: upsOutputSource
+      mappings:
+      - value: '1'
+        newvalue: other
+      - value: '2'
+        newvalue: none
+      - value: '3'
+        newvalue: normal
+      - value: '4'
+        newvalue: bypass
+      - value: '5'
+        newvalue: battery
+      - value: '6'
+        newvalue: booster
+      - value: '7'
+        newvalue: reducer
+    - uuid: 1dca33efa6654413aa90b37c152e1e5c
+      name: Huawei UPS battery state
+      mappings:
+      - value: '1'
+        newvalue: not present
+      - value: '2'
+        newvalue: temporary
+      - value: '3'
+        newvalue: sleep
+      - value: '4'
+        newvalue: float charge
+      - value: '5'
+        newvalue: boost charge
+      - value: '6'
+        newvalue: discharging
+  - uuid: 3777ce27d9ec4045bf39e7b9a20a8639
+    template: MDP Ubiquiti Wave SNMP
+    name: MDP Ubiquiti Wave SNMP
+    description: Ubiquiti UISP Wave Pro 60 GHz links (airFiber MIB). Link together with MDP Network Base SNMP.
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: 70f087dc2ffb46608c04cdb125fd2ab6
+      name: 'Wireless: Signal (dBm)'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.4.1.41112.1.11.1.3.1.3]
+      key: wifi.rssi
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: dBm
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+      - type: JAVASCRIPT
+        parameters:
+        - |-
+          var m = value.match(/=\s*[A-Za-z0-9]+:\s*(-?[0-9.]+)/);
+          if (!m) throw 'no link';
+          return m[1];
+        error_handler: DISCARD_VALUE
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: rssi
+    - uuid: ff638eed67914b73b739789d21736268
+      name: 'Wireless: SNR (dB)'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.4.1.41112.1.11.1.3.1.4]
+      key: wifi.snr
+      delay: '{$WIFI.INTERVAL}'
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: dB
+      preprocessing:
+      - type: CHECK_NOT_SUPPORTED
+        parameters:
+        - '-1'
+        error_handler: DISCARD_VALUE
+      - type: JAVASCRIPT
+        parameters:
+        - |-
+          var m = value.match(/=\s*[A-Za-z0-9]+:\s*(-?[0-9.]+)/);
+          if (!m) throw 'no link';
+          return m[1];
+        error_handler: DISCARD_VALUE
+      tags:
+      - tag: component
+        value: wireless
+      - tag: rca
+        value: snr
+    - uuid: deec49c46a4a4213a52d9ca8b78f4417
+      name: 'Wave: Frequency'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.1.2.1]
+      key: wave.frequency
+      delay: 10m
+      history: '{$RCA.HISTORY}'
+      units: MHz
+      tags:
+      - tag: component
+        value: wireless
+    - uuid: 1d56194dfc1c4c8181ae34046d18eec5
+      name: 'Wave: Channel width'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.1.3.1]
+      key: wave.width
+      delay: 1h
+      history: '{$RCA.HISTORY}'
+      units: MHz
+      tags:
+      - tag: component
+        value: wireless
+    discovery_rules:
+    - uuid: 68afb541e7da4a8f9749f32237e62d6e
+      name: Wave peers discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#PEER},1.3.6.1.4.1.41112.1.11.1.3.1.14,{#PEERMODEL},1.3.6.1.4.1.41112.1.11.1.3.1.13]
+      key: wave.peer.discovery
+      delay: 10m
+      lifetime: 7d
+      item_prototypes:
+      - uuid: 0fdc4dc40fc34a2a9c9b5ef94ac7dd23
+        name: 'Link to {#PEER}: Local signal'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.3.{#SNMPINDEX}]
+        key: wifi.ap.rssi[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dBm
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: rssi
+        trigger_prototypes:
+        - uuid: bd66c4cd2f9f408981f7bf09576b8129
+          expression: max(/MDP Ubiquiti Wave SNMP/wifi.ap.rssi[{#SNMPINDEX}],10m)<{$WAVE.RSSI.MIN}
+          name: 'Link to {#PEER}: Signal low'
+          priority: AVERAGE
+          description: '60 GHz signal below threshold for 10 minutes: rain fade, alignment or obstruction.'
+          tags:
+          - tag: scope
+            value: performance
+      - uuid: 8691014a976949129e7eaab36542ffbb
+        name: 'Link to {#PEER}: Remote signal'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.18.{#SNMPINDEX}]
+        key: wifi.remote.rssi[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dBm
+        tags:
+        - tag: component
+          value: wireless
+      - uuid: eb1dc50ed724480287c07895f503562b
+        name: 'Link to {#PEER}: Local SNR'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.4.{#SNMPINDEX}]
+        key: wifi.ap.snr[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dB
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: snr
+      - uuid: ebc555208d714bdab2001ee97add3300
+        name: 'Link to {#PEER}: Remote SNR'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.19.{#SNMPINDEX}]
+        key: wifi.remote.snr[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: FLOAT
+        units: dB
+        tags:
+        - tag: component
+          value: wireless
+      - uuid: 538b7542dec842e0b058e984b6443813
+        name: 'Link to {#PEER}: TX MCS'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.5.{#SNMPINDEX}]
+        key: wifi.mcs.tx[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: mcs
+      - uuid: f9b33f20b910418598a05b98accb5125
+        name: 'Link to {#PEER}: RX MCS'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.6.{#SNMPINDEX}]
+        key: wifi.mcs.rx[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: mcs
+      - uuid: 86f632cdc0224123bdbb64cb4fc3e8bc
+        name: 'Link to {#PEER}: TX capacity'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.7.{#SNMPINDEX}]
+        key: wifi.capacity.tx[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        units: bps
+        tags:
+        - tag: component
+          value: wireless
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '1000'
+      - uuid: 6dd7a5ad8c3f480e85326f370456c496
+        name: 'Link to {#PEER}: RX capacity'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.8.{#SNMPINDEX}]
+        key: wifi.capacity.rx[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        units: bps
+        tags:
+        - tag: component
+          value: wireless
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '1000'
+      - uuid: ac4bd70bee1643bab7aeb1666f871196
+        name: 'Link to {#PEER}: Link uptime'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.41112.1.11.1.3.1.17.{#SNMPINDEX}]
+        key: wifi.link.uptime[{#SNMPINDEX}]
+        delay: '{$WIFI.INTERVAL}'
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        units: uptime
+        tags:
+        - tag: component
+          value: wireless
+        - tag: rca
+          value: linkuptime
+        preprocessing:
+        - type: MULTIPLIER
+          parameters:
+          - '0.01'
+        trigger_prototypes:
+        - uuid: 43be4314be5541ba8f4bdcef324dc5fe
+          expression: last(/MDP Ubiquiti Wave SNMP/wifi.link.uptime[{#SNMPINDEX}])<10m
+          name: 'Link to {#PEER}: Link re-established (uptime below 10m)'
+          priority: WARNING
+          description: The wireless link dropped and came back. If the radio's own uptime did not reset, it was the link, not power.
+          tags:
+          - tag: scope
+            value: performance
+          manual_close: 'YES'
+    macros:
+    - macro: '{$WIFI.INTERVAL}'
+      value: 1m
+    - macro: '{$WAVE.RSSI.MIN}'
+      value: '-70'
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: ubiquiti
+  - uuid: 0bd34a070c10428c84918a77967e7280
+    template: MDP UniFi Switch SNMP
+    name: MDP UniFi Switch SNMP
+    description: 'UniFi switches (FASTPATH box services: fans, PSU, temperatures). Link together with MDP Network Base SNMP.'
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: dae9366a8274412e8d9d480fe1abe492
+      name: 'UniFi: Model'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.4413.1.1.1.1.1.2.0]
+      key: unifi.model
+      delay: 1h
+      history: 7d
+      trends: '0'
+      value_type: CHAR
+      inventory_link: MODEL
+      tags:
+      - tag: component
+        value: system
+    - uuid: f88af51928594dab8f6527111580b53f
+      name: 'UniFi: Firmware'
+      type: SNMP_AGENT
+      snmp_oid: get[1.3.6.1.4.1.4413.1.1.1.1.1.13.0]
+      key: unifi.firmware
+      delay: 1h
+      history: 7d
+      trends: '0'
+      value_type: CHAR
+      inventory_link: OS_SHORT
+      tags:
+      - tag: component
+        value: system
+    discovery_rules:
+    - uuid: 1d0a5829f3e144d683cf0d77a63cf13b
+      name: Fans discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#STATE},1.3.6.1.4.1.4413.1.1.43.1.6.1.3]
+      key: unifi.fan.discovery
+      delay: 1h
+      lifetime: 7d
+      item_prototypes:
+      - uuid: a832f2a88a1a456880f4dd0d1f911e30
+        name: 'Fan {#SNMPINDEX}: State'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.4413.1.1.43.1.6.1.3.{#SNMPINDEX}]
+        key: unifi.fan.state[{#SNMPINDEX}]
+        delay: 1m
+        history: '{$RCA.HISTORY}'
+        tags:
+        - tag: component
+          value: hardware
+        valuemap:
+          name: FASTPATH item state
+        trends: '0'
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        trigger_prototypes:
+        - uuid: 62f72ee3fda7491284d053c554ba39a1
+          expression: last(/MDP UniFi Switch SNMP/unifi.fan.state[{#SNMPINDEX}])=3
+          name: Fan {#SNMPINDEX} failed
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: 2f3e284b1b154bb2ab02c7573bf1efa7
+        name: 'Fan {#SNMPINDEX}: Speed'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.4413.1.1.43.1.6.1.4.{#SNMPINDEX}]
+        key: unifi.fan.speed[{#SNMPINDEX}]
+        delay: 5m
+        history: '{$RCA.HISTORY}'
+        units: rpm
+        tags:
+        - tag: component
+          value: hardware
+    - uuid: 51277062f45444e5a32a86124c628865
+      name: Power supplies discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#STATE},1.3.6.1.4.1.4413.1.1.43.1.7.1.3]
+      key: unifi.psu.discovery
+      delay: 1h
+      lifetime: 7d
+      item_prototypes:
+      - uuid: 1501883edc06422cb93fcdf6a6b99f24
+        name: 'Power supply {#SNMPINDEX}: State'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.4413.1.1.43.1.7.1.3.{#SNMPINDEX}]
+        key: unifi.psu.state[{#SNMPINDEX}]
+        delay: 1m
+        history: '{$RCA.HISTORY}'
+        tags:
+        - tag: component
+          value: hardware
+        - tag: rca
+          value: psu
+        valuemap:
+          name: FASTPATH item state
+        trends: '0'
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        trigger_prototypes:
+        - uuid: 58a298593eb5409a91962167ad07f003
+          expression: last(/MDP UniFi Switch SNMP/unifi.psu.state[{#SNMPINDEX}])=3 or last(/MDP UniFi Switch SNMP/unifi.psu.state[{#SNMPINDEX}])=5
+          name: 'Power supply {#SNMPINDEX}: failed or no power'
+          priority: HIGH
+          description: A power supply lost input power or failed.
+          tags:
+          - tag: scope
+            value: availability
+    - uuid: f9fa487b8af148ae94694d4a0996e50a
+      name: Temperature sensors discovery
+      type: SNMP_AGENT
+      snmp_oid: discovery[{#STATE},1.3.6.1.4.1.4413.1.1.43.1.8.1.4]
+      key: unifi.temp.discovery
+      delay: 1h
+      lifetime: 7d
+      item_prototypes:
+      - uuid: 26e7fc95794543aab2841eadce95632e
+        name: Temperature sensor {#SNMPINDEX}
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.4413.1.1.43.1.8.1.5.{#SNMPINDEX}]
+        key: unifi.temp.value[{#SNMPINDEX}]
+        delay: 1m
+        history: '{$RCA.HISTORY}'
+        units: C
+        tags:
+        - tag: component
+          value: hardware
+        trigger_prototypes:
+        - uuid: 2d0a6fc8d86648e5aed34a798df2329a
+          expression: min(/MDP UniFi Switch SNMP/unifi.temp.value[{#SNMPINDEX}],5m)>{$UNIFI.TEMP.MAX}
+          name: Temperature sensor {#SNMPINDEX} above {$UNIFI.TEMP.MAX}C
+          priority: AVERAGE
+          tags:
+          - tag: scope
+            value: availability
+      - uuid: 084cdd24067f4f89b76ea199675f13f9
+        name: 'Temperature sensor {#SNMPINDEX}: State'
+        type: SNMP_AGENT
+        snmp_oid: get[1.3.6.1.4.1.4413.1.1.43.1.8.1.4.{#SNMPINDEX}]
+        key: unifi.temp.state[{#SNMPINDEX}]
+        delay: 1m
+        history: '{$RCA.HISTORY}'
+        tags:
+        - tag: component
+          value: hardware
+        valuemap:
+          name: FASTPATH temp state
+        trends: '0'
+        preprocessing:
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        trigger_prototypes:
+        - uuid: 1168b1d98fe747f09cbe9373aa6d2e81
+          expression: last(/MDP UniFi Switch SNMP/unifi.temp.state[{#SNMPINDEX}])>=3 and last(/MDP UniFi Switch SNMP/unifi.temp.state[{#SNMPINDEX}])<=4
+          name: 'Temperature sensor {#SNMPINDEX}: critical'
+          priority: HIGH
+          tags:
+          - tag: scope
+            value: availability
+    macros:
+    - macro: '{$UNIFI.TEMP.MAX}'
+      value: '75'
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: unifi
+    valuemaps:
+    - uuid: ff56037efe1044c2aa98d6e158d437c1
+      name: FASTPATH item state
+      mappings:
+      - value: '1'
+        newvalue: notpresent
+      - value: '2'
+        newvalue: operational
+      - value: '3'
+        newvalue: failed
+      - value: '4'
+        newvalue: powering
+      - value: '5'
+        newvalue: nopower
+      - value: '6'
+        newvalue: notpowering
+      - value: '7'
+        newvalue: incompatible
+    - uuid: b59075db0be74b6da3c0597ecd24f3fd
+      name: FASTPATH temp state
+      mappings:
+      - value: '0'
+        newvalue: low
+      - value: '1'
+        newvalue: normal
+      - value: '2'
+        newvalue: warning
+      - value: '3'
+        newvalue: critical
+      - value: '4'
+        newvalue: shutdown
+      - value: '5'
+        newvalue: notpresent
+      - value: '6'
+        newvalue: notoperational
+  - uuid: fa411976f2064dcbb2d13008dccc2a4e
+    template: MDP LACP Trunk SNMP
+    name: MDP LACP Trunk SNMP
+    description: |-
+      LACP trunks (Eth-Trunk in LACP mode) on Huawei eKit switches. OIDs confirmed by snmpwalk of two
+      eKit switches, 2026-10-29.
+
+      The radios inside an LACP trunk cannot be reached reliably (the trunk's hashing sends their management
+      packets down the other link), so the trunk is watched here instead. A radio that loses its air link keeps
+      its cable up: only the LACP state shows it (dot3adAggPortActorOperState, bits sync/collecting/distributing).
+      One SNMP walk a minute feeds every item. A port belongs to a trunk by its LACP admin key; static trunks
+      (no LACP) have no ports in the LAG MIB and are not discovered.
+      Host macro {$LACP.LABEL:"Eth-Trunk1"} (set by zbx_sites.py sitedown) names what the trunk carries.
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: 6a17e00cab2e41ecb179e6c6daf1c7a2
+      name: 'LACP: raw table'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.2.1.31.1.1.1.1,1.3.6.1.2.1.2.2.1.8,1.2.840.10006.300.43.1.1.1.1.6,1.2.840.10006.300.43.1.2.1.1.4,1.2.840.10006.300.43.1.2.1.1.21]
+      key: lacp.walk
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |2
+
+          var cols = {'1.3.6.1.2.1.31.1.1.1.1': 'name', '1.3.6.1.2.1.2.2.1.8': 'oper',
+                      '1.2.840.10006.300.43.1.1.1.1.6': 'aggkey', '1.2.840.10006.300.43.1.2.1.1.4': 'portkey',
+                      '1.2.840.10006.300.43.1.2.1.1.21': 'actor'};
+          var t = {name: {}, oper: {}, aggkey: {}, portkey: {}, actor: {}};
+          value.split('\n').forEach(function (line) {
+              var m = line.match(/^\.?([0-9.]+)\.([0-9]+) = ([A-Za-z0-9-]+): ?(.*)$/);
+              if (!m || !cols[m[1]]) return;
+              var v = m[4].replace(/^"|"\s*$/g, '').trim();
+              if (m[3] === 'Hex-STRING') v = parseInt(v.split(' ')[0], 16);
+              else if (m[3] === 'STRING' && cols[m[1]] === 'actor') v = v.length ? v.charCodeAt(0) : 0;
+              t[cols[m[1]]][m[2]] = v;
+          });
+          var out = {aggs: {}, ports: {}};
+          Object.keys(t.aggkey).forEach(function (i) {
+              out.aggs[i] = {n: t.name[i] || ('trunk ' + i), k: String(t.aggkey[i])};
+          });
+          Object.keys(t.portkey).forEach(function (i) {
+              out.ports[i] = {n: t.name[i] || ('port ' + i), k: String(t.portkey[i]),
+                              a: Number(t.actor[i] || 0), o: Number(t.oper[i] || 0)};
+          });
+          return JSON.stringify(out);
+      tags:
+      - tag: component
+        value: lacp
+    discovery_rules:
+    - uuid: 93fa4b9431564f29ab81f8e81081b239
+      name: LACP trunks discovery
+      type: DEPENDENT
+      key: lacp.trunk.discovery
+      master_item:
+        key: lacp.walk
+      lifetime: 30d
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |2-
+
+          var d = JSON.parse(value), out = [];
+          Object.keys(d.aggs).forEach(function (i) {
+              var n = 0;
+              Object.keys(d.ports).forEach(function (p) { if (d.ports[p].k === d.aggs[i].k) n++; });
+              if (n) out.push({'{#AGGINDEX}': i, '{#AGGNAME}': d.aggs[i].n, '{#MEMBERS}': n});
+          });
+          return JSON.stringify(out);
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      item_prototypes:
+      - uuid: 0e5b8bcdd4204674be3e4d2cbadfa4d7
+        name: 'LACP {#AGGNAME}: links in use'
+        type: DEPENDENT
+        key: lacp.active[{#AGGINDEX}]
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        master_item:
+          key: lacp.walk
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |2-
+
+            var d = JSON.parse(value), agg = d.aggs['{#AGGINDEX}'];
+            if (!agg) throw 'trunk {#AGGNAME} is gone';
+            var all = [], used = [], idle = [];
+            Object.keys(d.ports).forEach(function (i) {
+                var p = d.ports[i];
+                if (p.k !== agg.k) return;
+                all.push(p.n);
+                if (p.o === 1 && (p.a & 0x1C) === 0x1C) used.push(p.n); else idle.push(p.n);
+            });
+            return used.length;
+        tags:
+        - tag: component
+          value: lacp
+        - tag: trunk
+          value: '{#AGGNAME}'
+        - tag: rca
+          value: lacp
+      - uuid: fbc257efad39487faf80a860e8eb5935
+        name: 'LACP {#AGGNAME}: links configured'
+        type: DEPENDENT
+        key: lacp.members[{#AGGINDEX}]
+        history: '{$RCA.HISTORY}'
+        value_type: UNSIGNED
+        master_item:
+          key: lacp.walk
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |2-
+
+            var d = JSON.parse(value), agg = d.aggs['{#AGGINDEX}'];
+            if (!agg) throw 'trunk {#AGGNAME} is gone';
+            var all = [], used = [], idle = [];
+            Object.keys(d.ports).forEach(function (i) {
+                var p = d.ports[i];
+                if (p.k !== agg.k) return;
+                all.push(p.n);
+                if (p.o === 1 && (p.a & 0x1C) === 0x1C) used.push(p.n); else idle.push(p.n);
+            });
+            return all.length;
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        tags:
+        - tag: component
+          value: lacp
+        - tag: trunk
+          value: '{#AGGNAME}'
+        - tag: rca
+          value: lacp
+      - uuid: a040b591745646d8a610270f708f25b9
+        name: 'LACP {#AGGNAME}: links not in use'
+        type: DEPENDENT
+        key: lacp.idle[{#AGGINDEX}]
+        history: '{$RCA.HISTORY}'
+        value_type: CHAR
+        master_item:
+          key: lacp.walk
+        preprocessing:
+        - type: JAVASCRIPT
+          parameters:
+          - |2-
+
+            var d = JSON.parse(value), agg = d.aggs['{#AGGINDEX}'];
+            if (!agg) throw 'trunk {#AGGNAME} is gone';
+            var all = [], used = [], idle = [];
+            Object.keys(d.ports).forEach(function (i) {
+                var p = d.ports[i];
+                if (p.k !== agg.k) return;
+                all.push(p.n);
+                if (p.o === 1 && (p.a & 0x1C) === 0x1C) used.push(p.n); else idle.push(p.n);
+            });
+            return idle.length ? idle.join(', ') : 'none';
+        - type: DISCARD_UNCHANGED_HEARTBEAT
+          parameters:
+          - 15m
+        tags:
+        - tag: component
+          value: lacp
+        - tag: trunk
+          value: '{#AGGNAME}'
+        - tag: rca
+          value: lacp
+      trigger_prototypes:
+      - uuid: 566c9bb7a2364495896c47863a2c8609
+        expression: max(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}],{$LACP.TIME})<last(/MDP LACP Trunk SNMP/lacp.members[{#AGGINDEX}]) and last(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}])>0 and last(/MDP
+          LACP Trunk SNMP/lacp.idle[{#AGGINDEX}])<>"none"
+        name: 'LACP {#AGGNAME} degraded: {ITEM.LASTVALUE4} not in use{$LACP.LABEL:"{#AGGNAME}"}'
+        priority: AVERAGE
+        description: 'One link of the trunk is down (port down, or the radio on it lost its air link: LACP stops using it within 3 s with the fast timer). Traffic runs on the other link, at half the capacity
+          and with no spare. Check the radio pair on the port named in the problem.'
+        opdata: 'In use: {ITEM.LASTVALUE1}'
+        tags:
+        - tag: scope
+          value: availability
+        - tag: alarm
+          value: lacp
+        recovery_mode: RECOVERY_EXPRESSION
+        recovery_expression: min(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}],{$LACP.TIME})=last(/MDP LACP Trunk SNMP/lacp.members[{#AGGINDEX}])
+        dependencies:
+        - name: 'LACP {#AGGNAME}: all links down{$LACP.LABEL:"{#AGGNAME}"}'
+          expression: max(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}],{$LACP.TIME})=0
+          recovery_expression: last(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}])>0
+      - uuid: d48e1dc324b04d7192451e047d71853f
+        expression: max(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}],{$LACP.TIME})=0
+        name: 'LACP {#AGGNAME}: all links down{$LACP.LABEL:"{#AGGNAME}"}'
+        priority: HIGH
+        description: 'No link of the trunk is in use: everything behind it is cut off. The Site down alarm of that site follows; this is its cause on the near side.'
+        opdata: 'In use: {ITEM.LASTVALUE1}'
+        tags:
+        - tag: scope
+          value: availability
+        - tag: alarm
+          value: lacp
+        recovery_mode: RECOVERY_EXPRESSION
+        recovery_expression: last(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}])>0
+      - uuid: a2471882960d4ac2b468ccf6704b7c28
+        expression: changecount(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}],1h)>={$LACP.FLAPS}
+        name: 'LACP {#AGGNAME}: links flapping{$LACP.LABEL:"{#AGGNAME}"}'
+        priority: WARNING
+        description: 'The number of links in use changed {$LACP.FLAPS} or more times in an hour: a radio link that keeps dropping (interference, alignment, power).'
+        opdata: 'In use: {ITEM.LASTVALUE1}'
+        tags:
+        - tag: scope
+          value: availability
+        - tag: alarm
+          value: lacp
+        recovery_mode: RECOVERY_EXPRESSION
+        recovery_expression: changecount(/MDP LACP Trunk SNMP/lacp.active[{#AGGINDEX}],1h)=0
+    macros:
+    - macro: '{$LACP.TIME}'
+      value: 2m
+      description: a link must stay out this long to alarm
+    - macro: '{$LACP.FLAPS}'
+      value: '4'
+      description: changes per hour that count as flapping
+    - macro: '{$LACP.LABEL}'
+      description: 'what a trunk carries, per trunk: {$LACP.LABEL:"Eth-Trunk1"} = " (SITE0008 main link)"'
+    - macro: '{$RCA.HISTORY}'
+      value: 30d
+    tags:
+    - tag: class
+      value: network
+    - tag: target
+      value: lacp
+  - uuid: a7fe53e093f84ce4b0fb110e77919484
+    template: MDP Zabbix Server Guard
+    name: MDP Zabbix Server Guard
+    description: |-
+      Alarms before a Zabbix cache fills (a full configuration cache stops the server), when processes are
+      saturated, and when the nightly archive / backup (tools/zbx_data.py) did not run or disks fill up.
+      Internal items: link it to a host monitored by the server itself (zbx_sites.py guard creates one).
+    groups:
+    - name: Templates/MDP server
+    items:
+    - uuid: 932613d3ef4b47619945a83db2211fdd
+      name: 'Cache: configuration cache % used'
+      type: INTERNAL
+      key: zabbix[rcache,buffer,pused]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      description: zabbix_server.conf CacheSize
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: b978780b9b45411c9b1d95913f86d457
+        expression: min(/MDP Zabbix Server Guard/zabbix[rcache,buffer,pused],10m)>{$CACHE.WARN}
+        name: Zabbix configuration cache over {$CACHE.WARN}% used
+        priority: WARNING
+        description: Raise CacheSize in zabbix_server.conf (see OPTIMIZE.md) at the next maintenance window.
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Zabbix configuration cache over {$CACHE.HIGH}% used
+          expression: min(/MDP Zabbix Server Guard/zabbix[rcache,buffer,pused],5m)>{$CACHE.HIGH}
+      - uuid: 15af975669ef4d1e903d16a809eb1bb0
+        expression: min(/MDP Zabbix Server Guard/zabbix[rcache,buffer,pused],5m)>{$CACHE.HIGH}
+        name: Zabbix configuration cache over {$CACHE.HIGH}% used
+        priority: HIGH
+        description: Raise CacheSize now and restart zabbix-server. When this cache is full the server stops.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 044dbd92328e47d1ac03c4b5c85810a1
+      name: 'Cache: history cache % used'
+      type: INTERNAL
+      key: zabbix[wcache,history,pused]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      description: zabbix_server.conf HistoryCacheSize
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 32537fd0dd684d2685b8d383c4e968ec
+        expression: min(/MDP Zabbix Server Guard/zabbix[wcache,history,pused],10m)>{$CACHE.WARN}
+        name: Zabbix history cache over {$CACHE.WARN}% used
+        priority: WARNING
+        description: Raise HistoryCacheSize in zabbix_server.conf (see OPTIMIZE.md) at the next maintenance window.
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Zabbix history cache over {$CACHE.HIGH}% used
+          expression: min(/MDP Zabbix Server Guard/zabbix[wcache,history,pused],5m)>{$CACHE.HIGH}
+      - uuid: 34261742f85f4a39af063c782e22ea48
+        expression: min(/MDP Zabbix Server Guard/zabbix[wcache,history,pused],5m)>{$CACHE.HIGH}
+        name: Zabbix history cache over {$CACHE.HIGH}% used
+        priority: HIGH
+        description: Raise HistoryCacheSize now and restart zabbix-server.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 81aed21b7d6e4c2eb82a928e6c6c8ccd
+      name: 'Cache: history index cache % used'
+      type: INTERNAL
+      key: zabbix[wcache,index,pused]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      description: zabbix_server.conf HistoryIndexCacheSize
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 9cd03e3bebf54e8ca384756a60051266
+        expression: min(/MDP Zabbix Server Guard/zabbix[wcache,index,pused],10m)>{$CACHE.WARN}
+        name: Zabbix history index cache over {$CACHE.WARN}% used
+        priority: WARNING
+        description: Raise HistoryIndexCacheSize in zabbix_server.conf (see OPTIMIZE.md) at the next maintenance window.
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Zabbix history index cache over {$CACHE.HIGH}% used
+          expression: min(/MDP Zabbix Server Guard/zabbix[wcache,index,pused],5m)>{$CACHE.HIGH}
+      - uuid: 4e7d02dda3c0490ba62de27351a10846
+        expression: min(/MDP Zabbix Server Guard/zabbix[wcache,index,pused],5m)>{$CACHE.HIGH}
+        name: Zabbix history index cache over {$CACHE.HIGH}% used
+        priority: HIGH
+        description: Raise HistoryIndexCacheSize now and restart zabbix-server.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: f93814de8c30489bac52419a48c513ff
+      name: 'Cache: trend cache % used'
+      type: INTERNAL
+      key: zabbix[wcache,trend,pused]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      description: zabbix_server.conf TrendCacheSize
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 2ce3c61dca684db2a0642f96373cc1b9
+        expression: min(/MDP Zabbix Server Guard/zabbix[wcache,trend,pused],10m)>{$CACHE.WARN}
+        name: Zabbix trend cache over {$CACHE.WARN}% used
+        priority: WARNING
+        description: Raise TrendCacheSize in zabbix_server.conf (see OPTIMIZE.md) at the next maintenance window.
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Zabbix trend cache over {$CACHE.HIGH}% used
+          expression: min(/MDP Zabbix Server Guard/zabbix[wcache,trend,pused],5m)>{$CACHE.HIGH}
+      - uuid: c4943ef71ab94110b8b7601fa0d36e21
+        expression: min(/MDP Zabbix Server Guard/zabbix[wcache,trend,pused],5m)>{$CACHE.HIGH}
+        name: Zabbix trend cache over {$CACHE.HIGH}% used
+        priority: HIGH
+        description: Raise TrendCacheSize now and restart zabbix-server.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 07660d180d7d4c4dae3d0ac0e6a0a612
+      name: 'Cache: value cache % used'
+      type: INTERNAL
+      key: zabbix[vcache,buffer,pused]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      description: zabbix_server.conf ValueCacheSize
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 178aaa0f383945769495f91cca4820e6
+        expression: min(/MDP Zabbix Server Guard/zabbix[vcache,buffer,pused],10m)>{$CACHE.WARN}
+        name: Zabbix value cache over {$CACHE.WARN}% used
+        priority: WARNING
+        description: Raise ValueCacheSize in zabbix_server.conf (see OPTIMIZE.md) at the next maintenance window.
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Zabbix value cache over {$CACHE.HIGH}% used
+          expression: min(/MDP Zabbix Server Guard/zabbix[vcache,buffer,pused],5m)>{$CACHE.HIGH}
+      - uuid: e5e7dfc84a8f45cbac4639b414e0e03c
+        expression: min(/MDP Zabbix Server Guard/zabbix[vcache,buffer,pused],5m)>{$CACHE.HIGH}
+        name: Zabbix value cache over {$CACHE.HIGH}% used
+        priority: HIGH
+        description: Raise ValueCacheSize now and restart zabbix-server.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 81a1a38e64584a7c907d45f9cb529316
+      name: 'Cache: value cache low-memory mode'
+      type: INTERNAL
+      key: zabbix[vcache,cache,mode]
+      delay: 1m
+      history: 30d
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 1be734a4839540f48da1dd3acbb16345
+        expression: last(/MDP Zabbix Server Guard/zabbix[vcache,cache,mode])=1
+        name: Zabbix value cache ran out of memory
+        priority: HIGH
+        description: 'The value cache is in low-memory mode: triggers read from the database and get slow. Raise ValueCacheSize.'
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 950b6557192244e79ab58dc8b3093ee7
+      name: Values processed per second
+      type: INTERNAL
+      key: zabbix[wcache,values]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      tags:
+      - tag: component
+        value: zabbix
+      preprocessing:
+      - type: CHANGE_PER_SECOND
+        parameters:
+        - ''
+    - uuid: f77002edd24943739bb5a1b0f9df70dd
+      name: Items late by more than 10 min
+      type: INTERNAL
+      key: zabbix[queue,10m]
+      delay: 1m
+      history: 30d
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 02ee0f487b514f0281b3ad50f6766c9c
+        expression: min(/MDP Zabbix Server Guard/zabbix[queue,10m],10m)>{$QUEUE.MAX}
+        name: 'Zabbix: more than {$QUEUE.MAX} items late by 10 min'
+        priority: WARNING
+        description: Pollers cannot keep up, or many devices are unreachable.
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 33c5b8868040401bb96dc582a9275a5a
+      name: Preprocessing queue
+      type: INTERNAL
+      key: zabbix[preprocessing_queue]
+      delay: 1m
+      history: 30d
+      value_type: UNSIGNED
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 97d62d3ce9484f8a8f913b5d0475c405
+        expression: min(/MDP Zabbix Server Guard/zabbix[preprocessing_queue],10m)>1000
+        name: Zabbix preprocessing queue is growing
+        priority: WARNING
+        description: Raise StartPreprocessors, or the history syncers cannot write fast enough.
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: 4cbbafba8384494882efd53d21d63745
+      name: 'Busy: poller %'
+      type: INTERNAL
+      key: zabbix[process,poller,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 9093f1a222234142a3dfbb9782d60ce2
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,poller,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix poller processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartPollers in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 9d30535ece2948eb84d6a19d9400d51a
+      name: 'Busy: snmp poller %'
+      type: INTERNAL
+      key: zabbix[process,snmp poller,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: e480441081bd41019e9dceb8ad71b696
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,snmp poller,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix snmp poller processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartSNMPPollers in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: bc6a815031da4595880ec17e477d00cf
+      name: 'Busy: icmp pinger %'
+      type: INTERNAL
+      key: zabbix[process,icmp pinger,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 31f7eb1fb39143aa95a37aec1b939cda
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,icmp pinger,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix icmp pinger processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartPingers in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: c0585d7a60a04aa4bcc691bc86c8e883
+      name: 'Busy: unreachable poller %'
+      type: INTERNAL
+      key: zabbix[process,unreachable poller,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 76e0a0df3a984ec1b76e9d0e5e9de733
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,unreachable poller,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix unreachable poller processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartPollersUnreachable in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 748ed364e04f4523940b24c08a95db18
+      name: 'Busy: history syncer %'
+      type: INTERNAL
+      key: zabbix[process,history syncer,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: d987afa3e735450d9b45f65481ea7869
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,history syncer,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix history syncer processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartDBSyncers in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: a6c2cd08bf2c4dffa7e39e58fbcfe971
+      name: 'Busy: preprocessing worker %'
+      type: INTERNAL
+      key: zabbix[process,preprocessing worker,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 4eaa071fd43a4d65bb117e8da657c1ff
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,preprocessing worker,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix preprocessing worker processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartPreprocessors in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 74741c8d2814437a946e9f757ef25b6d
+      name: 'Busy: lld worker %'
+      type: INTERNAL
+      key: zabbix[process,lld worker,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 6ea5f6d81b854164a8e0579de0518c4e
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,lld worker,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix lld worker processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartLLDProcessors in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: a1f6ba27dbaf4df28c051124e3cf25ba
+      name: 'Busy: discovery worker %'
+      type: INTERNAL
+      key: zabbix[process,discovery worker,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 4523867a2d5b47cba07516680cdd568f
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,discovery worker,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix discovery worker processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartDiscoverers in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 5a439a13ab084f58af9bcb6fa7097d23
+      name: 'Busy: trapper %'
+      type: INTERNAL
+      key: zabbix[process,trapper,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 873ccf82dd5f40dc9eff870c0429f765
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,trapper,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix trapper processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        description: Raise StartTrappers in zabbix_server.conf.
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: f871c1773b184ee6a3fab36381c0ab6a
+      name: 'Busy: configuration syncer %'
+      type: INTERNAL
+      key: zabbix[process,configuration syncer,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: b9a1eb0a847a44da8619276681105901
+        expression: avg(/MDP Zabbix Server Guard/zabbix[process,configuration syncer,avg,busy],15m)>{$BUSY.WARN}
+        name: Zabbix configuration syncer processes over {$BUSY.WARN}% busy
+        priority: WARNING
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 40075a9a9e0b4e65910b915fc5e0b295
+      name: 'Busy: housekeeper %'
+      type: INTERNAL
+      key: zabbix[process,housekeeper,avg,busy]
+      delay: 1m
+      history: 30d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+    - uuid: 7f8249f2f78642a9b95f25b232c9c0e2
+      name: Database size
+      type: TRAP
+      key: mdp.db.size
+      history: 365d
+      value_type: UNSIGNED
+      units: B
+      description: Pushed by tools/zbx_data.py status (every 10 min).
+      tags:
+      - tag: component
+        value: zabbix
+    - uuid: 5515d74687f7410796e52f5df348beac
+      name: Oldest history kept (days)
+      type: TRAP
+      key: mdp.history.days
+      history: 365d
+      value_type: FLOAT
+      units: d
+      tags:
+      - tag: component
+        value: zabbix
+    - uuid: 97423d689a95412e88a4fdf8d1d163f3
+      name: Database disk free
+      type: TRAP
+      key: mdp.disk.pfree[db]
+      history: 365d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: cb9e402709d24138a9cb663d354b1eab
+        expression: last(/MDP Zabbix Server Guard/mdp.disk.pfree[db])<{$DISK.PFREE.WARN}
+        name: Database disk below {$DISK.PFREE.WARN}% free
+        priority: WARNING
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Database disk below {$DISK.PFREE.HIGH}% free
+          expression: last(/MDP Zabbix Server Guard/mdp.disk.pfree[db])<{$DISK.PFREE.HIGH}
+      - uuid: 1c1e8fbc93064f5a803b6c007c1110d5
+        expression: last(/MDP Zabbix Server Guard/mdp.disk.pfree[db])<{$DISK.PFREE.HIGH}
+        name: Database disk below {$DISK.PFREE.HIGH}% free
+        priority: HIGH
+        description: 'PostgreSQL stops when its disk is full. Free space now (RETENTION.md: disk full).'
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 6c5aa3b4aa86437b86005c8c19fef134
+      name: Archive disk free
+      type: TRAP
+      key: mdp.disk.pfree[archive]
+      history: 365d
+      value_type: FLOAT
+      units: '%'
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: cfe97d3f19a1470ebd2ea65a0d3ff35b
+        expression: last(/MDP Zabbix Server Guard/mdp.disk.pfree[archive])<{$DISK.PFREE.WARN}
+        name: Archive disk below {$DISK.PFREE.WARN}% free
+        priority: WARNING
+        tags:
+        - tag: scope
+          value: capacity
+        dependencies:
+        - name: Archive disk below {$DISK.PFREE.HIGH}% free
+          expression: last(/MDP Zabbix Server Guard/mdp.disk.pfree[archive])<{$DISK.PFREE.HIGH}
+      - uuid: 07f6b2918d0b4597b25eb61bb99a2402
+        expression: last(/MDP Zabbix Server Guard/mdp.disk.pfree[archive])<{$DISK.PFREE.HIGH}
+        name: Archive disk below {$DISK.PFREE.HIGH}% free
+        priority: HIGH
+        description: 'PostgreSQL stops when its disk is full. Free space now (RETENTION.md: disk full).'
+        tags:
+        - tag: scope
+          value: capacity
+    - uuid: 1483b7b18ff74a3b94877625b587aa2c
+      name: Last successful history archive
+      type: TRAP
+      key: mdp.archive.last
+      history: 365d
+      value_type: UNSIGNED
+      units: unixtime
+      description: Pushed by tools/zbx_data.py after each successful run.
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: d05b4878a3bf4559b608ff0e766c4c1c
+        expression: now()-last(/MDP Zabbix Server Guard/mdp.archive.last)>{$JOB.MAXAGE} or nodata(/MDP Zabbix Server Guard/mdp.archive.last,{$JOB.MAXAGE})=1
+        name: Daily history archive has not succeeded for {$JOB.MAXAGE}
+        priority: HIGH
+        description: Check /var/log/mdp-zabbix-data.log on the Zabbix server (RETENTION.md).
+        tags:
+        - tag: scope
+          value: retention
+    - uuid: c5dc9d905971430aaf7821095ed5e65f
+      name: Last successful database backup
+      type: TRAP
+      key: mdp.backup.last
+      history: 365d
+      value_type: UNSIGNED
+      units: unixtime
+      description: Pushed by tools/zbx_data.py after each successful run.
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 27b73491460545bca773991e2d05215b
+        expression: now()-last(/MDP Zabbix Server Guard/mdp.backup.last)>{$JOB.MAXAGE} or nodata(/MDP Zabbix Server Guard/mdp.backup.last,{$JOB.MAXAGE})=1
+        name: Nightly database backup has not succeeded for {$JOB.MAXAGE}
+        priority: HIGH
+        description: Check /var/log/mdp-zabbix-data.log on the Zabbix server (RETENTION.md).
+        tags:
+        - tag: scope
+          value: retention
+    - uuid: 50694af72824494a97cc0d9d8134135d
+      name: Last successful off-server copy
+      type: TRAP
+      key: mdp.copy.last
+      history: 365d
+      value_type: UNSIGNED
+      units: unixtime
+      description: Pushed by tools/zbx_data.py after each successful run.
+      tags:
+      - tag: component
+        value: zabbix
+      triggers:
+      - uuid: 5ea98a39ab60473cb104a056dcad9f2e
+        expression: now()-last(/MDP Zabbix Server Guard/mdp.copy.last)>{$JOB.MAXAGE}
+        name: Off-server copy of archive and backups has not succeeded for {$JOB.MAXAGE}
+        priority: HIGH
+        description: Check /var/log/mdp-zabbix-data.log on the Zabbix server (RETENTION.md).
+        tags:
+        - tag: scope
+          value: retention
+    macros:
+    - macro: '{$CACHE.WARN}'
+      value: '70'
+      description: '% used: plan a cache increase'
+    - macro: '{$CACHE.HIGH}'
+      value: '85'
+      description: '% used: raise the cache now'
+    - macro: '{$BUSY.WARN}'
+      value: '75'
+    - macro: '{$QUEUE.MAX}'
+      value: '100'
+    - macro: '{$DISK.PFREE.WARN}'
+      value: '25'
+    - macro: '{$DISK.PFREE.HIGH}'
+      value: '10'
+    - macro: '{$JOB.MAXAGE}'
+      value: 30h
+      description: 'Daily jobs: alarm when older than this'
+    tags:
+    - tag: class
+      value: software
+    - tag: target
+      value: zabbix-server
+  - uuid: 691642aedad04d72930a91636a9e0834
+    template: MDP Site Status
+    name: MDP Site Status
+    description: |-
+      Linked to one host per site ("Site SITExxxx", made by zbx_sites.py sitedown from data/main_links.txt).
+      Watches the site's main link and counts how many of the site's devices answer ping, and raises one
+      "Site SITExxxx DOWN" problem when the main link is lost and most of the site went with it. The device
+      alarms of the site, and the Site down alarms of the sites behind it, depend on it.
+      Host macros set by sitedown: {$SITE.CODE}, {$SITE.MAINLINK} (text), {$SITE.CUTOFF} (text).
+    groups:
+    - name: Templates/MDP network
+    items:
+    - uuid: cadd6e0bb168406b9254c712a390cc05
+      name: Devices monitored
+      type: CALCULATED
+      key: site.devices
+      delay: 30s
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      params: count(last_foreach(/*/icmpping?[group="Sites/{$SITE.CODE}"]))
+      tags:
+      - tag: component
+        value: site
+    - uuid: 28e0aa9f017d46e89b56e5a10f8eb75c
+      name: Devices down
+      type: CALCULATED
+      key: site.devices.down
+      delay: 30s
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      params: count(last_foreach(/*/icmpping?[group="Sites/{$SITE.CODE}"]),"eq",0)
+      tags:
+      - tag: component
+        value: site
+    - uuid: 9572418281f34d1bb739b76f135ac09d
+      name: Devices down %
+      type: CALCULATED
+      key: site.devices.down.pct
+      delay: 30s
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      units: '%'
+      params: last(//site.devices.down)*100/max(last(//site.devices),1)
+      tags:
+      - tag: component
+        value: site
+    - uuid: 2d94829406204eb382ea7c6847f960a6
+      name: Main link up
+      type: CALCULATED
+      key: site.mainlink.up
+      delay: 30s
+      history: '{$RCA.HISTORY}'
+      value_type: FLOAT
+      params: max(max_foreach(/*/icmpping?[tag="mainlink:{$SITE.CODE}"],{$SITE.DOWN.TIME}))
+      description: '1 while any far-end radio of the main link (host tag mainlink=<site>) answered ping in the last {$SITE.DOWN.TIME}. Two radios = LACP: the link is down only when both are.'
+      tags:
+      - tag: component
+        value: site
+      valuemap:
+        name: Link state
+    - uuid: 7c620b80db134aa6a7ecf52757e28248
+      name: Upstream site main link down
+      type: CALCULATED
+      key: site.upstream.down
+      delay: 30s
+      history: '{$RCA.HISTORY}'
+      value_type: UNSIGNED
+      params: count(last_foreach(/*/site.mainlink.up?[tag="sitedown:{$SITE.UPSTREAM}" or tag="sitedown:{$SITE.CODE}"]),"eq",0)-(last(//site.mainlink.up)=0)
+      description: 1 while the main link of the upstream site ({$SITE.UPSTREAM}, host 'Site <upstream>') is down.
+      tags:
+      - tag: component
+        value: site
+    valuemaps:
+    - uuid: fc51b64a9a5d4f748d7a03650f983d0f
+      name: Link state
+      mappings:
+      - value: '0'
+        newvalue: Down
+      - value: '1'
+        newvalue: Up
+    macros:
+    - macro: '{$SITE.CODE}'
+      description: Site code, e.g. SITE0007 (set per host)
+    - macro: '{$SITE.MAINLINK}'
+      description: Main link text for the alarm (set per host)
+    - macro: '{$SITE.CUTOFF}'
+      description: '''. Also cut off: ...'' sites behind this one'
+    - macro: '{$SITE.UPSTREAM}'
+      description: Site this one hangs off (set per host)
+    - macro: '{$SITE.DISASTER}'
+      value: '0'
+      description: 1 = Site DOWN is Disaster, 0 = High (set per host)
+    - macro: '{$SITE.DOWN.TIME}'
+      value: 2m
+      description: Main link silent this long = site down. Keep below {$ICMP.DOWN.TIME} (3m)
+    - macro: '{$SITE.DOWN.PCT}'
+      value: '80'
+      description: '% of the site''s devices that must be down too'
+    - macro: '{$RCA.HISTORY}'
+      value: 30d
+    tags:
+    - tag: class
+      value: site
+  triggers:
+  - uuid: 42a76cdad1c84b43ba3fda595a2a3a52
+    expression: (last(/MDP Network Base SNMP/system.hw.uptime)>0 and last(/MDP Network Base SNMP/system.hw.uptime)<10m) or (last(/MDP Network Base SNMP/system.hw.uptime)=0 and last(/MDP Network Base SNMP/system.net.uptime)<10m)
+    name: Device rebooted (uptime below 10m)
+    priority: WARNING
+    description: 'Uptime reset: power loss, PoE loss or crash. See the RCA report for which.'
+    tags:
+    - tag: scope
+      value: availability
+    manual_close: 'YES'
+  - uuid: 89776dfd083b46a5ac5f6cb0d1c4fbca
+    expression: '{$CPE.UPTIME.ALERT}=1 and ((last(/MDP Network Base SNMP/system.hw.uptime)>0 and last(/MDP Network Base SNMP/system.hw.uptime)<{$CPE.UPTIME.MIN}) or (last(/MDP Network Base SNMP/system.hw.uptime)=0
+      and last(/MDP Network Base SNMP/system.net.uptime)<{$CPE.UPTIME.MIN}))'
+    name: CPE uptime below {$CPE.UPTIME.MIN}
+    priority: WARNING
+    description: The endpoint CPE restarted less than {$CPE.UPTIME.MIN} ago (power, PoE or crash). It clears by itself once the CPE has run {$CPE.UPTIME.MIN} without a restart.
+    tags:
+    - tag: scope
+      value: availability
+  - uuid: 1a001347fcb540c08928edb1e24fa321
+    expression: count(/MDP Network Base SNMP/icmpping,30m,"eq","0")>=3 and min(/MDP Network Base SNMP/icmpping,2m)=1 and nodata(/MDP Network Base SNMP/system.hw.uptime,3m)=0 and ((last(/MDP Network Base
+      SNMP/system.hw.uptime)>0 and last(/MDP Network Base SNMP/system.hw.uptime)>30m) or (last(/MDP Network Base SNMP/system.hw.uptime)=0 and last(/MDP Network Base SNMP/system.net.uptime)>30m))
+    name: 'Outage cause: CONNECTIVITY (device did not reboot)'
+    priority: AVERAGE
+    description: 'The device was unreachable in the last 30 minutes but its uptime did not reset, so it kept power the whole time. The fault is on the path: upstream link, radio/RF, cable or switch port.
+      Check the parent device and the RCA report.'
+    tags:
+    - tag: scope
+      value: availability
+    - tag: diagnosis
+      value: connectivity
+    manual_close: 'YES'
+  - uuid: f8ed6d7c8ed3479094eb3169fdd916e4
+    expression: count(/MDP Network Base SNMP/icmpping,30m,"eq","0")>=3 and min(/MDP Network Base SNMP/icmpping,2m)=1 and nodata(/MDP Network Base SNMP/system.hw.uptime,3m)=0 and ((last(/MDP Network Base
+      SNMP/system.hw.uptime)>0 and last(/MDP Network Base SNMP/system.hw.uptime)<30m) or (last(/MDP Network Base SNMP/system.hw.uptime)=0 and last(/MDP Network Base SNMP/system.net.uptime)<30m))
+    name: 'Outage cause: POWER (device rebooted)'
+    priority: AVERAGE
+    description: The device was unreachable and came back with a fresh uptime, so it lost power or rebooted (mains, UPS, PoE port or crash). If several devices at the site show this together, it was site
+      power.
+    tags:
+    - tag: scope
+      value: availability
+    - tag: diagnosis
+      value: power
+    manual_close: 'YES'
+  - uuid: 4ff16e7602bf4506aa61a268083ce298
+    expression: '{$SNMP.ALERT}=1 and max(/MDP Network Base SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0 and last(/MDP Network Base SNMP/icmpping)=1'
+    name: SNMP not responding while ping is up
+    priority: WARNING
+    description: 'Device answers ping but not SNMP: check community, ACL or agent. Devices without SNMP (e.g. power units) have {$SNMP.ALERT}=0 and are watched by ping only.'
+    tags:
+    - tag: scope
+      value: availability
+  - uuid: ac9aeffb076e440eb1f273c271ceac98
+    expression: last(/MDP Cambium ePMP SNMP/wifi.mode)=2 and max(/MDP Cambium ePMP SNMP/wifi.link.state,{$WIFI.LINK.DOWN})<3
+    name: Radio not linked to its AP (scanning)
+    priority: HIGH
+    description: The SM answers on the network but its radio link has not been connected for {$WIFI.LINK.DOWN}. Usually the AP is down, the link is blocked or the radio was re-aimed.
+    tags:
+    - tag: scope
+      value: availability
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: last(/MDP Cambium ePMP SNMP/wifi.link.state)=3
+  - uuid: 3718b539acd74b67b06bc8b5fe4de04b
+    expression: last(/MDP Cambium ePMP SNMP/wifi.mode)=2 and max(/MDP Cambium ePMP SNMP/wifi.rssi,15m)<{$WIFI.RSSI.MIN} and min(/MDP Cambium ePMP SNMP/wifi.link.state,15m)=3
+    name: 'Signal weak: RSSI {ITEM.LASTVALUE2}'
+    priority: WARNING
+    description: 'Signal to its own AP below {$WIFI.RSSI.MIN} dBm for 15 minutes while linked: alignment, obstruction or interference.'
+    tags:
+    - tag: scope
+      value: performance
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: min(/MDP Cambium ePMP SNMP/wifi.rssi,10m)>={$WIFI.RSSI.MIN}+3 or last(/MDP Cambium ePMP SNMP/wifi.link.state)<>3
+  - uuid: aa663542c80c4cbb9715044af19fa000
+    expression: last(/MDP Cambium ePMP SNMP/wifi.mode)=2 and max(/MDP Cambium ePMP SNMP/wifi.snr,15m)<{$WIFI.SNR.MIN} and min(/MDP Cambium ePMP SNMP/wifi.link.state,15m)=3
+    name: 'SNR low: {ITEM.LASTVALUE2}'
+    priority: WARNING
+    description: 'Signal-to-noise below {$WIFI.SNR.MIN} dB for 15 minutes while linked: interference or noise on the channel.'
+    tags:
+    - tag: scope
+      value: performance
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: min(/MDP Cambium ePMP SNMP/wifi.snr,10m)>={$WIFI.SNR.MIN}+2 or last(/MDP Cambium ePMP SNMP/wifi.link.state)<>3
+  - uuid: c6460aa56fcc4e53bbe6488c7e9e8d9d
+    expression: last(/MDP Cambium ePMP SNMP/wifi.mode)=1 and max(/MDP Cambium ePMP SNMP/wifi.stations,5m)=0 and max(/MDP Cambium ePMP SNMP/wifi.stations,2h)>0
+    name: AP lost all its stations
+    priority: AVERAGE
+    description: This AP had stations connected in the last 2 hours and now has none.
+    tags:
+    - tag: scope
+      value: availability
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: last(/MDP Cambium ePMP SNMP/wifi.stations)>0
+  - uuid: 7634a645f2874242b32e640fb6c07e0b
+    expression: last(/MDP UPS SNMP/ups.battery.charge)<{$UPS.CHARGE.MIN} and last(/MDP UPS SNMP/ups.output.source)=5
+    name: 'UPS: Battery charge below {$UPS.CHARGE.MIN}% on battery'
+    priority: AVERAGE
+    description: Devices at the site will lose power soon.
+    tags:
+    - tag: scope
+      value: availability
+  - uuid: ee43bbfefab6423da2a6dda0f5420dbc
+    expression: last(/MDP UPS SNMP/ups.battery.minutes)<{$UPS.RUNTIME.MIN} and last(/MDP UPS SNMP/ups.output.source)=5
+    name: 'UPS: Runtime below {$UPS.RUNTIME.MIN} minutes on battery'
+    priority: AVERAGE
+    tags:
+    - tag: scope
+      value: availability
+  - uuid: 383ce28057af47b58a53ee27d991fed6
+    expression: last(/MDP Site Status/site.mainlink.up)=0 and last(/MDP Site Status/site.devices.down.pct)>={$SITE.DOWN.PCT} and {$SITE.DISASTER}=0
+    name: 'Site {$SITE.CODE} DOWN: main link {$SITE.MAINLINK} lost{$SITE.CUTOFF}'
+    priority: HIGH
+    description: 'The site''s main link has not answered ping for {$SITE.DOWN.TIME} and most of the site''s devices are down with it, so the whole site is cut off. The device alarms at this site and the
+      sites behind it are held back: this is the one problem to work on. Open the RCA report for the cause (power: the far-end radio rebooted; link: it kept its uptime).'
+    tags:
+    - tag: scope
+      value: availability
+    - tag: alarm
+      value: site-down
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: last(/MDP Site Status/site.mainlink.up)=1
+    event_name: 'Site {$SITE.CODE} DOWN: main link {$SITE.MAINLINK} lost, {?last(//site.devices.down)} of {?last(//site.devices)} devices down{$SITE.CUTOFF}'
+    opdata: '{ITEM.LASTVALUE2} of devices down'
+  - uuid: c10e2403b35245eba940ee3ac32c7491
+    expression: last(/MDP Site Status/site.mainlink.up)=0 and last(/MDP Site Status/site.devices.down.pct)>={$SITE.DOWN.PCT} and {$SITE.DISASTER}=1
+    name: 'Site {$SITE.CODE} DOWN: main link {$SITE.MAINLINK} lost{$SITE.CUTOFF}'
+    priority: DISASTER
+    description: 'The site''s main link has not answered ping for {$SITE.DOWN.TIME} and most of the site''s devices are down with it, so the whole site is cut off. The device alarms at this site and the
+      sites behind it are held back: this is the one problem to work on. Open the RCA report for the cause (power: the far-end radio rebooted; link: it kept its uptime).'
+    tags:
+    - tag: scope
+      value: availability
+    - tag: alarm
+      value: site-down
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: last(/MDP Site Status/site.mainlink.up)=1
+    event_name: 'Site {$SITE.CODE} DOWN: main link {$SITE.MAINLINK} lost, {?last(//site.devices.down)} of {?last(//site.devices)} devices down{$SITE.CUTOFF}'
+    opdata: '{ITEM.LASTVALUE2} of devices down'
+  - uuid: d1160fc7821a4b4589b461a2cd2d1a8b
+    expression: last(/MDP Site Status/site.upstream.down)>=1 and last(/MDP Site Status/site.mainlink.up)=0 and last(/MDP Site Status/site.devices.down.pct)>={$SITE.DOWN.PCT}
+    name: Site {$SITE.CODE} DOWN via upstream {$SITE.UPSTREAM} (cut off, not the cause)
+    priority: HIGH
+    description: This site is down because the site it hangs off ({$SITE.UPSTREAM}) lost its main link. Work on the upstream Site DOWN alarm; this one clears by itself when the path comes back. If it turns
+      into a 'Site DOWN' alarm after the upstream recovers, this site has its own fault too.
+    tags:
+    - tag: scope
+      value: availability
+    - tag: alarm
+      value: site-cutoff
+    recovery_mode: RECOVERY_EXPRESSION
+    recovery_expression: last(/MDP Site Status/site.upstream.down)=0 or last(/MDP Site Status/site.mainlink.up)=1
+    event_name: 'Site {$SITE.CODE} DOWN via upstream {$SITE.UPSTREAM}: cut off, {?last(//site.devices.down)} of {?last(//site.devices)} devices down'
+  graphs:
+  - uuid: 5897f4e2035448a69fbf167b306bce7d
+    name: Zabbix cache usage
+    graph_items:
+    - sortorder: '0'
+      color: 1A7C11
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[rcache,buffer,pused]
+    - sortorder: '1'
+      color: F63100
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[wcache,history,pused]
+    - sortorder: '2'
+      color: 2774A4
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[wcache,index,pused]
+    - sortorder: '3'
+      color: A54F10
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[wcache,trend,pused]
+    - sortorder: '4'
+      color: FC6EA3
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[vcache,buffer,pused]
+    ymin_type_1: FIXED
+    ymax_type_1: FIXED
+    yaxismax: '100'
+  - uuid: 587ac6b570ce49108612a812671b120c
+    name: Zabbix process busy
+    graph_items:
+    - sortorder: '0'
+      color: 1A7C11
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,poller,avg,busy]
+    - sortorder: '1'
+      color: F63100
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,snmp poller,avg,busy]
+    - sortorder: '2'
+      color: 2774A4
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,icmp pinger,avg,busy]
+    - sortorder: '3'
+      color: A54F10
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,unreachable poller,avg,busy]
+    - sortorder: '4'
+      color: FC6EA3
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,history syncer,avg,busy]
+    - sortorder: '5'
+      color: 6C59DC
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,preprocessing worker,avg,busy]
+    - sortorder: '6'
+      color: AC8C14
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[process,lld worker,avg,busy]
+    ymin_type_1: FIXED
+    ymax_type_1: FIXED
+    yaxismax: '100'
+  - uuid: c6aef60e1de242f896995edeee702a81
+    name: Zabbix values per second
+    graph_items:
+    - sortorder: '0'
+      color: 1A7C11
+      item:
+        host: MDP Zabbix Server Guard
+        key: zabbix[wcache,values]
+  - uuid: ef95266d86e842afaf38296e26babd02
+    name: Disk free
+    graph_items:
+    - sortorder: '0'
+      color: 1A7C11
+      item:
+        host: MDP Zabbix Server Guard
+        key: mdp.disk.pfree[db]
+    - sortorder: '1'
+      color: F63100
+      item:
+        host: MDP Zabbix Server Guard
+        key: mdp.disk.pfree[archive]
+    ymin_type_1: FIXED
+    ymax_type_1: FIXED
+    yaxismax: '100'
