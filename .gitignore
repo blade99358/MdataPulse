@@ -1,0 +1,12 @@
+# private data: device lists, locations, names, main links (see examples/)
+data/
+*.env
+!config.example.env
+.zabbix_env
+# generated
+__pycache__/
+*.pyc
+*.html.tmp
+rca_*.html
+*.zip
+*.tar.gz

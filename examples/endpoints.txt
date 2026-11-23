@@ -1,0 +1,3 @@
+# Copy to data/endpoints.txt (read by tools/zbx_endpoints.py). name | IP | endpoint no. | site
+Endpoint 1 CPE|10.20.1.1|1|SITE0001
+Endpoint 2 CPE|10.20.1.2|2|SITE0001

@@ -1,0 +1,3 @@
+# Copy to data/device_names.txt (read by tools/zbx_rename.py). IP | old name | new visible name
+10.20.0.3|SITE0001-BH-01|SITE01_SITE00_Wave
+10.20.0.4|SITE0001-SW-01|SITE01_eKit_SW
